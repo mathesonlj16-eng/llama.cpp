@@ -1530,6 +1530,10 @@ private:
         }
 
         if (spec) {
+            // Research diagnostics: resolved rollback capability, not requested configuration.
+            SRV_INF("speculative rollback: target n_rs_seq=%u rm_type=%d, draft n_rs_seq=%u rm_type=%d\n",
+                    llama_n_rs_seq(ctx_tgt), (int) ctx_tgt_seq_rm_type,
+                    ctx_dft ? llama_n_rs_seq(ctx_dft) : 0u, (int) ctx_dft_seq_rm_type);
             SRV_TRC("%s", "speculative decoding context initialized\n");
         } else {
             spec_init.reset();
@@ -3891,7 +3895,8 @@ private:
                 }
 
                 if (!llama_memory_seq_rm(llama_get_memory(ctx_dft), slot.id, ckpt.pos_max + 1, -1)) {
-                    GGML_ABORT("failed to remove sequence %d\n", slot.id);
+                    GGML_ABORT("failed to remove draft sequence: slot=%d p0=%d p1=-1 n_rs_seq=%u rm_type=%d\n",
+                            slot.id, ckpt.pos_max + 1, llama_n_rs_seq(ctx_dft), (int) ctx_dft_seq_rm_type);
                 }
             }
 
