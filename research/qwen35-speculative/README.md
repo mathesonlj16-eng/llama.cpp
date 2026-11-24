@@ -75,3 +75,46 @@ The client records server-reported generation tokens/sec separately from end-to-
 Before testing an experimental implementation, map sequence IDs, `n_rs_seq` for both contexts, rollback-window limits, and the rejected-draft replay path. Test n-max 1/2/3, all-accepted and early/mid/late rejection, consecutive requests, long contexts, and multi-slot configurations if supported. An experimental rollback branch must preserve default behavior behind a flag and include a safe fallback or clean error rather than aborting.
 
 **No upstream PR or correctness claims until the above gate passes.**
+
+
+## Diagnostic patch: locate the sequence-removal abort
+
+The research branch now has **log-only / error-message-only** instrumentation in three existing source files. It does **not** enable rollback, change checkpoint placement, alter execution policies, or suppress aborts.
+
+| Source | Diagnostic |
+|---|---|
+| `tools/server/server-context.cpp` | On speculative initialization, reports target and draft `n_rs_seq` and resolved sequence-removal types; on post-draft removal failure identifies the draft path. |
+| `common/common.cpp` | Identifies whether an abort came from the **target** or **draft** during combined sequence removal; prints requested range and that context's `n_rs_seq`. |
+| `src/llama-memory-recurrent.cpp` | Explains why recurrent `seq_rm()` returned false: invalid sequence index, shared state, rollback beyond stored window, rollback already pending, or invalid negative-sequence range. |
+
+**Run this branch's unchanged speculative configuration first**, without manually adding `n_rs_seq` or any checkpoint flag. Record the resolved configuration. The prior abort occurred in a manually altered setup, so it is **not yet reproduced** on this branch.
+
+In the isolated WSL2 llama.cpp checkout:
+
+```bash
+python3 research/qwen35-speculative/test_bench_client.py
+
+cmake -S . -B build-qwen35-research -DCMAKE_BUILD_TYPE=Release \
+  -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75
+cmake --build build-qwen35-research --target llama-server --parallel 2
+git rev-parse HEAD
+```
+
+Start `build-qwen35-research/bin/llama-server` using your **existing validated** target/draft files and settings (see above). Capture stderr/stdout to a local log with `2>&1 | tee /tmp/qwen35-research-server.log` and preserve the exact command and model hashes.
+
+If and only if the unchanged configuration is correct and stable, reproduce the prior **target-only experimental change** on a separate disposable worktree with the smallest possible diff. Stop as soon as it fails, and keep the last log lines and exact commit. Do not run repeated crash attempts or change both contexts blindly.
+
+### Interpreting failures
+
+- `bounded rollback rejected`: inspect `requested`, `rs_max`, and `rs_idx`; this is an **invariant/capacity-of-snapshots** failure, not by itself a 4 GiB hardware-capacity failure.
+- `cannot partially roll back shared state`: inspect sequence sharing and slot count.
+- `failed to remove sequence in target context`: target memory rejected the combined removal.
+- `failed to remove sequence in draft context` or `failed to remove draft sequence`: draft memory rejected a removal, potentially even if target rollback is enabled.
+- `cannot save/load multiple ranges of cells to/from device memory`: separate limitation of on-device checkpointing; don't assume extra GPU RAM would fix it.
+- CUDA allocation errors / OOM: **hardware memory capacity** may be relevant; capture VRAM usage and allocations before concluding.
+
+The specific failure reason remains **unconfirmed until a real aborted run produces logs**. The research branch intentionally retains the failing assertions so incorrect sequence state is never silently accepted.
+
+### Revision caveat
+
+`main` / `master` evolves quickly. Compare the exact checked-out fork revision to current upstream before proposing a fix: some recurrent-state internals have changed. A result from a historical commit is not evidence that current upstream has the same failure.
