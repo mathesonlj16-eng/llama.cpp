@@ -1633,10 +1633,12 @@ done:
     return res;
 }
 
-static void common_context_seq_rm(llama_context * ctx, llama_seq_id seq_id, llama_pos p0, llama_pos p1) {
+static void common_context_seq_rm(llama_context * ctx, const char * context_role, llama_seq_id seq_id, llama_pos p0, llama_pos p1) {
     auto * mem = llama_get_memory(ctx);
     if (!llama_memory_seq_rm(mem, seq_id, p0, p1)) {
-        GGML_ABORT("%s", string_format("failed to remove sequence %d with p0=%d, p1=%d\n", seq_id, p0, p1).c_str());
+        GGML_ABORT("%s", string_format(
+                "failed to remove sequence in %s context: seq_id=%d p0=%d p1=%d n_rs_seq=%u\n",
+                context_role, seq_id, p0, p1, llama_n_rs_seq(ctx)).c_str());
     }
 }
 
@@ -1656,9 +1658,9 @@ void common_memory::init(llama_context * ctx_tgt, llama_context * ctx_dft) {
 }
 
 void common_memory::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos p1) const {
-    common_context_seq_rm(ctx_tgt, seq_id, p0, p1);
+    common_context_seq_rm(ctx_tgt, "target", seq_id, p0, p1);
     if (ctx_dft) {
-        common_context_seq_rm(ctx_dft, seq_id, p0, p1);
+        common_context_seq_rm(ctx_dft, "draft", seq_id, p0, p1);
     }
 }
 
