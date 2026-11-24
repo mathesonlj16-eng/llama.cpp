@@ -187,7 +187,8 @@ bool llama_memory_recurrent::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos
     // models like Mamba or RWKV can't have a state partially erased at the end
     // of the sequence because their state isn't preserved for previous tokens
     if (seq_id >= (int64_t) size) {
-        // could be fatal
+        LLAMA_LOG_ERROR("%s: seq_id=%d exceeds recurrent-memory cell count=%u (p0=%d p1=%d n_rs_seq=%u)\n",
+                __func__, seq_id, size, p0, p1, n_rs_seq);
         return false;
     }
     if (0 <= seq_id) {
@@ -199,6 +200,8 @@ bool llama_memory_recurrent::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos
             if (0 < p0 && p0 <= cell.pos && p1 > cell.pos) {
                 // a cell shared by several sequences cannot move back for only one of them
                 if (cell.seq_id.size() > 1) {
+                    LLAMA_LOG_ERROR("%s: cannot partially roll back shared state (seq_id=%d p0=%d p1=%d cell_pos=%d shared=%zu)\n",
+                            __func__, seq_id, p0, p1, cell.pos, cell.seq_id.size());
                     return false;
                 }
                 // the filter kept no layer (e.g. an MTP draft context), so only the position moves back
@@ -214,6 +217,8 @@ bool llama_memory_recurrent::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos
                     cell.pos = p0 - 1;
                     return true;
                 }
+                LLAMA_LOG_ERROR("%s: bounded rollback rejected (seq_id=%d p0=%d p1=%d cell_pos=%d requested=%d rs_max=%u rs_idx=%u n_rs_seq=%u)\n",
+                        __func__, seq_id, p0, p1, cell.pos, rollback, cell.rs_max, rs_idx[seq_id], n_rs_seq);
                 return false;
             }
             // invalidate tails which will be cleared
@@ -224,7 +229,8 @@ bool llama_memory_recurrent::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos
     } else {
         // seq_id is negative, then the range should include everything or nothing
         if (p0 != p1 && (p0 != 0 || p1 != std::numeric_limits<llama_pos>::max())) {
-            //printf("[DEBUG] inside `llama_memory_recurrent::seq_rm`: `seq_id` is negative, so returning false\n");
+            LLAMA_LOG_ERROR("%s: negative seq_id=%d requires full or empty range (p0=%d p1=%d)\n",
+                    __func__, seq_id, p0, p1);
             return false;
         }
     }
