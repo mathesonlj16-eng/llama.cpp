@@ -26,7 +26,7 @@ A single `n_rs_seq` change is **not** a validated fix. Do not make unchecked cha
 
 Use the same model files, hashes, GPU layer split, context length, CPU threads, CUDA setup, and prompt list for each test. Models are **not** downloaded by the benchmark.
 
-The script is a stdlib-only client for an **already-running** `llama-server` on 127.0.0.1. It does not start/stop servers or change application code.
+The script is a stdlib-only client for an **already-running** `llama-server` on 127.0.0.1. It does not start/stop servers or change application code. Run its offline smoke tests first:\n\n```bash\npython3 research/qwen35-speculative/test_bench_client.py\n```\n\nReplace `ACTUAL_LLAMA_CPP_COMMIT` with `git rev-parse HEAD` from **the source checkout that built the currently running server**. Do not label a newer executable as the historical b12602 / `418fe97b5` build. For the historical reproduction, build that commit in a separate checkout and invoke this branch's benchmark client by its absolute path.
 
 Start the **vanilla** server in one WSL terminal (substitute existing GGUF paths and the *tested* target layer count):
 
@@ -41,7 +41,7 @@ In a second WSL terminal, while the server is ready:
 
 ```bash
 python3 research/qwen35-speculative/bench_client.py \
-  --variant vanilla --build 418fe97b5 --session 01 \
+  --variant vanilla --build ACTUAL_LLAMA_CPP_COMMIT --session 01 \
   --notes "target Q8_0 sha256=...; -ngl=...; ctx=4096; np=1; CUDA=..." \
   --url http://127.0.0.1:8080 --rounds 5 --warmups 1 --output-dir /tmp/qwen35-study
 ```
@@ -59,7 +59,7 @@ Stop that server, then run the **speculative** variant with the *same target par
 
 ```bash
 python3 research/qwen35-speculative/bench_client.py \
-  --variant spec-default --build 418fe97b5 --session 01 \
+  --variant spec-default --build ACTUAL_LLAMA_CPP_COMMIT --session 01 \
   --notes "target/draft sha256=...; -ngl=...; -ngld=...; -td=4; CUDA=..." \
   --url http://127.0.0.1:8080 --rounds 5 --warmups 1 --output-dir /tmp/qwen35-study
 ```
